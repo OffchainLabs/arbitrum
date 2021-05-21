@@ -169,6 +169,18 @@ Uint256Result arbCoreGetMessageCount(CArbCore* arbcore_ptr) {
     }
 }
 
+int arbCoreSetCheckpointMinMessageIndex(CArbCore* arbcore_ptr,
+                                        const void* message_index) {
+    auto arb_core = static_cast<ArbCore*>(arbcore_ptr);
+    try {
+        arb_core->checkpointsSetMinMessageIndex(receiveUint256(message_index));
+
+        return true;
+    } catch (const std::exception& e) {
+        return false;
+    }
+}
+
 Uint256Result arbCoreGetTotalDelayedMessagesSequenced(CArbCore* arbcore_ptr) {
     auto arb_core = static_cast<ArbCore*>(arbcore_ptr);
     try {

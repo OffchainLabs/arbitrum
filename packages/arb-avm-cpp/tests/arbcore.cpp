@@ -67,7 +67,6 @@ void waitForDelivery(std::shared_ptr<ArbCore>& arbCore) {
         INFO(arbCore->messagesClearError());
     }
     REQUIRE(status == ArbCore::MESSAGES_SUCCESS);
-
 }
 
 void runCheckArbCore(std::shared_ptr<ArbCore>& arbCore,
@@ -134,10 +133,11 @@ TEST_CASE("ArbCore tests") {
     for (const auto& filename : files) {
         INFO("Testing " << filename);
 
-        ArbStorage storage(dbpath);
+        ArbStorage storage(dbpath, 0);
         REQUIRE(storage.initialize(arb_os_path).ok());
         auto arbCore = storage.getArbCore();
         REQUIRE(arbCore->startThread());
+        arbCore->checkpointsSetMinMessageIndex(0);
 
         auto test_file =
             std::string{arb_os_test_cases_path} + "/" + filename + ".aoslog";
@@ -228,6 +228,12 @@ TEST_CASE("ArbCore tests") {
         REQUIRE(advanceStatus.ok());
         REQUIRE(cursor.data->getOutput().arb_gas_used > 0);
 
+        auto tx = storage.makeReadTransaction();
+        REQUIRE(!arbCore->isCheckpointsEmpty(*tx));
+        if (sends.size() > 0) {
+            REQUIRE(!arbCore->maxCheckpointGas() == 0);
+        }
+
         //        auto before_sideload = arbCore->getMachineForSideload(
         //            inbox_messages.back().block_number, value_cache);
         //        REQUIRE(before_sideload.status.ok());
@@ -269,7 +275,7 @@ TEST_CASE("ArbCore inbox") {
     DBDeleter deleter;
     ValueCache value_cache{1, 0};
 
-    ArbStorage storage(dbpath);
+    ArbStorage storage(dbpath, 0);
     REQUIRE(
         storage.initialize(std::string{machine_test_cases_path} + "/inbox.mexe")
             .ok());
@@ -312,14 +318,16 @@ TEST_CASE("ArbCore inbox") {
 }
 
 TEST_CASE("ArbCore backwards reorg") {
-    ArbStorage storage(dbpath);
+    ArbStorage storage(dbpath, 0);
     REQUIRE(
         storage.initialize(std::string{machine_test_cases_path} + "/inbox.mexe")
             .ok());
     auto arbCore = storage.getArbCore();
     REQUIRE(arbCore->startThread());
 
-    REQUIRE(arbCore->deliverMessages(0, std::vector<std::vector<unsigned char>>(), std::vector<std::vector<unsigned char>>(), 0));
+    REQUIRE(
+        arbCore->deliverMessages(0, std::vector<std::vector<unsigned char>>(),
+                                 std::vector<std::vector<unsigned char>>(), 0));
     waitForDelivery(arbCore);
     REQUIRE(arbCore->messageEntryInsertedCount().data == 0);
 
@@ -336,19 +344,24 @@ TEST_CASE("ArbCore backwards reorg") {
         rawSeqBatchItems.push_back(serializeForCore(batch_item));
     }
 
-    REQUIRE(arbCore->deliverMessages(0, rawSeqBatchItems, std::vector<std::vector<unsigned char>>(), std::nullopt));
+    REQUIRE(arbCore->deliverMessages(0, rawSeqBatchItems,
+                                     std::vector<std::vector<unsigned char>>(),
+                                     std::nullopt));
     waitForDelivery(arbCore);
 
     auto newState = arbCore->getExecutionCursor(maxGas, value_cache);
     REQUIRE(newState.status.ok());
     REQUIRE(newState.data->getTotalMessagesRead() == 1);
 
-    REQUIRE(arbCore->deliverMessages(0, std::vector<std::vector<unsigned char>>(), std::vector<std::vector<unsigned char>>(), 0));
+    REQUIRE(
+        arbCore->deliverMessages(0, std::vector<std::vector<unsigned char>>(),
+                                 std::vector<std::vector<unsigned char>>(), 0));
     waitForDelivery(arbCore);
 
     auto reorgState = arbCore->getExecutionCursor(maxGas, value_cache);
     REQUIRE(reorgState.status.ok());
     REQUIRE(reorgState.data->getTotalMessagesRead() == 0);
     REQUIRE(reorgState.data->machineHash() == initialState.data->machineHash());
-    REQUIRE(arbCore->getLastMachine()->machine_state.output.fully_processed_inbox.count == 0);
+    REQUIRE(arbCore->getLastMachine()
+                ->machine_state.output.fully_processed_inbox.count == 0);
 }

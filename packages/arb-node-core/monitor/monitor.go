@@ -18,6 +18,7 @@ package monitor
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/offchainlabs/arbitrum/packages/arb-util/broadcaster"
 
@@ -42,7 +43,7 @@ type Monitor struct {
 }
 
 func NewMonitor(dbDir string, contractFile string) (*Monitor, error) {
-	storage, err := cmachine.NewArbStorage(dbDir)
+	storage, err := cmachine.NewArbStorage(dbDir, big.NewInt(0))
 	if err != nil {
 		return nil, err
 	}

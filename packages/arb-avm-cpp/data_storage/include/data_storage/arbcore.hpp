@@ -87,33 +87,11 @@ class ArbCore {
     // Core thread input
     std::atomic<bool> arbcore_abort{false};
 
-    // Core thread input
-    std::atomic<bool> save_checkpoint{false};
-    rocksdb::Status save_checkpoint_status;
-
-    // Core thread input for cleaning up old checkpoints
-    // Delete_checkpoints_before message should be set to non-zero value
-    // after other parameters are set.  Main thread will set
-    // delete_checkpoints_before_message to zero once cleanup has finished.
-    std::atomic<uint256_t> delete_checkpoints_before_message{0};
-    // If save_checkpoint_message_interval is zero, all checkpoints after
-    // delete_checkpoints_before_message are deleted.  If non-zero, only
-    // the last checkpoint for each message interval is saved.
-    uint256_t save_checkpoint_message_interval{0};
-    // Do not delete any checkpoints after ignore_checkpoints_after_message
-    uint256_t ignore_checkpoints_after_message{0};
-
-    // Core thread holds mutex only during reorg.
-    // Routines accessing database for log entries will need to acquire mutex
-    // because obsolete log entries have `Value` references removed causing
-    // reference counts to be decremented and possibly deleted.
-    // No mutex required to access Sends or Messages because obsolete entries
-    // are not deleted.
-    std::mutex core_reorg_mutex;
     std::shared_ptr<DataStorage> data_storage;
 
     std::unique_ptr<MachineThread> machine;
     std::shared_ptr<Code> code{};
+    uint256_t checkpoint_min_gas_interval;
 
     // Cache a machine ready to sideload view transactions just after recent
     // blocks
@@ -141,6 +119,15 @@ class ArbCore {
     std::unique_ptr<Machine> last_machine;
     std::shared_mutex last_machine_mutex;
 
+    // Core thread input for cleanup related data
+    std::atomic<bool> update_cleanup{false};
+    std::mutex cleanup_mutex;
+    uint256_t checkpoints_min_message_index_input;
+
+    // Delete checkpoints containing messages older than
+    // checkpoints_min_message_index
+    uint256_t checkpoints_min_message_index;
+
     std::shared_mutex old_machine_cache_mutex;
     std::map<uint256_t, std::unique_ptr<Machine>> old_machine_cache;
     // Not protected by mutex! Must only be used by the main ArbCore thread.
@@ -148,7 +135,8 @@ class ArbCore {
 
    public:
     ArbCore() = delete;
-    explicit ArbCore(std::shared_ptr<DataStorage> data_storage_);
+    ArbCore(std::shared_ptr<DataStorage> data_storage_,
+            uint256_t checkpoint_min_gas_interval);
 
     ~ArbCore() { abortThread(); }
     rocksdb::Status initialize(const LoadedExecutable& executable);
@@ -169,7 +157,7 @@ class ArbCore {
         ReadTransaction& tx,
         const uint256_t& arb_gas_used) const;
     std::variant<rocksdb::Status, MachineStateKeys> getCheckpointUsingGas(
-        ReadTransaction& tx,
+        ReadConsistentTransaction& tx,
         const uint256_t& total_gas,
         bool after_gas);
     rocksdb::Status reorgToMessageCountOrBefore(const uint256_t& message_count,
@@ -177,7 +165,7 @@ class ArbCore {
                                                 ValueCache& cache);
     template <class T>
     std::unique_ptr<T> getMachineUsingStateKeys(
-        const ReadTransaction& transaction,
+        const ReadConsistentTransaction& tx,
         const MachineStateKeys& state_data,
         ValueCache& value_cache) const;
 
@@ -188,10 +176,6 @@ class ArbCore {
                                   ValueCache& value_cache);
 
    private:
-    template <class T>
-    std::unique_ptr<T> getMachineImpl(ReadTransaction& tx,
-                                      uint256_t machineHash,
-                                      ValueCache& value_cache);
     rocksdb::Status saveCheckpoint(ReadWriteTransaction& tx);
 
    public:
@@ -217,6 +201,7 @@ class ArbCore {
         const std::optional<uint256_t>& reorg_batch_items);
     message_status_enum messagesStatus();
     std::string messagesClearError();
+    void checkpointsSetMinMessageIndex(uint256_t message_index);
 
    public:
     // Logs Cursor interaction
@@ -260,11 +245,11 @@ class ArbCore {
         ValueCache& cache);
 
     std::unique_ptr<Machine>& resolveExecutionCursorMachine(
-        const ReadTransaction& tx,
+        const ReadSnapshotTransaction& tx,
         ExecutionCursor& execution_cursor,
         ValueCache& cache) const;
     std::unique_ptr<Machine> takeExecutionCursorMachineImpl(
-        const ReadTransaction& tx,
+        const ReadSnapshotTransaction& tx,
         ExecutionCursor& execution_cursor,
         ValueCache& cache) const;
 
@@ -349,10 +334,10 @@ class ArbCore {
    private:
     rocksdb::Status addMessages(const message_data_struct& data,
                                 ValueCache& cache);
-    ValueResult<std::vector<value>> getLogsNoLock(ReadTransaction& tx,
-                                                  uint256_t index,
-                                                  uint256_t count,
-                                                  ValueCache& valueCache);
+    ValueResult<std::vector<value>> getLogsImpl(ReadConsistentTransaction& tx,
+                                                uint256_t index,
+                                                uint256_t count,
+                                                ValueCache& valueCache);
 
     ValueResult<std::vector<MachineMessage>> readNextMessages(
         const ReadConsistentTransaction& tx,
@@ -363,7 +348,7 @@ class ArbCore {
                  const InboxState& fully_processed_inbox) const;
 
     std::variant<rocksdb::Status, ExecutionCursor> getClosestExecutionMachine(
-        ReadTransaction& tx,
+        ReadConsistentTransaction& tx,
         const uint256_t& total_gas_used);
 
     rocksdb::Status updateLogInsertedCount(ReadWriteTransaction& tx,
@@ -394,6 +379,8 @@ class ArbCore {
     ValueResult<uint256_t> logsCursorGetCurrentTotalCount(
         const ReadTransaction& tx,
         size_t cursor_index) const;
+    rocksdb::Status deleteOldCheckpoint(
+        uint256_t delete_checkpoints_before_message_index);
 };
 
 std::optional<rocksdb::Status> deleteLogsStartingAt(ReadWriteTransaction& tx,

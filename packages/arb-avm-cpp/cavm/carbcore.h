@@ -49,6 +49,9 @@ ByteSliceArrayResult arbCoreGetSends(CArbCore* arbcore_ptr,
 
 Uint256Result arbCoreGetMessageCount(CArbCore* arbcore_ptr);
 
+int arbCoreSetCheckpointMinMessageIndex(CArbCore* arbcore_ptr,
+                                        const void* message_index);
+
 Uint256Result arbCoreGetTotalDelayedMessagesSequenced(CArbCore* arbcore_ptr);
 
 ByteSliceArrayResult arbCoreGetMessages(CArbCore* arbcore_ptr,

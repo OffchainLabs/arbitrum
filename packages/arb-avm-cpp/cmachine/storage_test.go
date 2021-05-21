@@ -17,6 +17,7 @@
 package cmachine
 
 import (
+	"math/big"
 	"os"
 	"testing"
 
@@ -42,7 +43,7 @@ func TestCheckpoint(t *testing.T) {
 		}
 	}()
 
-	arbStorage, err := NewArbStorage(dePath)
+	arbStorage, err := NewArbStorage(dePath, big.NewInt(0))
 	if err != nil {
 		t.Fatal(err)
 	}
