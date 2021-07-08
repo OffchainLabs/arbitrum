@@ -17,7 +17,10 @@
 package cmdhelp
 
 import (
+	"errors"
 	"fmt"
+	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"math"
 	"math/big"
 	"path/filepath"
@@ -27,10 +30,13 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/offchainlabs/arbitrum/packages/arb-util/configuration"
 )
+
+var logger = log.With().Caller().Stack().Str("component", "configuration").Logger()
 
 // GetKeystore returns a transaction authorization based on an existing ethereum
 // keystore located in validatorFolder/wallets or creates one if it does not
@@ -38,62 +44,89 @@ import (
 // via an interactive prompt. It also sets the gas price of the auth via an
 // optional "gasprice" arguement.
 func GetKeystore(
-	validatorFolder string,
+	config *configuration.Config,
 	wallet *configuration.Wallet,
-	gasPrice float64,
 	chainId *big.Int,
 ) (*bind.TransactOpts, func([]byte) ([]byte, error), error) {
-	ks := keystore.NewKeyStore(
-		filepath.Join(validatorFolder, "wallets"),
-		keystore.StandardScryptN,
-		keystore.StandardScryptP,
-	)
-
 	var account accounts.Account
-	if len(ks.Accounts()) > 0 {
-		account = ks.Accounts()[0]
-	}
+	var signer = func(data []byte) ([]byte, error) { return nil, errors.New("undefined signer") }
+	var auth *bind.TransactOpts
 
-	if ks.Unlock(account, wallet.Password) != nil {
-		if len(ks.Accounts()) == 0 {
-			fmt.Print("Enter new account password: ")
-		} else {
-			fmt.Print("Enter account password: ")
+	if len(config.Fireblocks.PrivateKey) != 0 {
+		fromAddress := ethcommon.HexToAddress(config.Fireblocks.SourceAddress)
+		auth = &bind.TransactOpts{
+			From: fromAddress,
+			Signer: func(address ethcommon.Address, tx *types.Transaction) (*types.Transaction, error) {
+				if address != fromAddress {
+					logger.Error().Hex("currentaddress", address.Bytes()).Hex("expectedaddress", fromAddress.Bytes()).Msg("incorrect from address provided")
+					return nil, bind.ErrNotAuthorized
+				}
+				// Just return original unsigned transaction because fireblocks will handle signing
+				return tx, nil
+			},
 		}
 
-		bytePassword, err := terminal.ReadPassword(int(syscall.Stdin))
-		if err != nil {
-			return nil, nil, err
+		signer = func(data []byte) ([]byte, error) {
+			return make([]byte, 32), nil
 		}
-		passphrase := string(bytePassword)
+	} else {
+		ks := keystore.NewKeyStore(
+			filepath.Join(config.Persistent.Chain, "wallets"),
+			keystore.StandardScryptN,
+			keystore.StandardScryptP,
+		)
 
-		passphrase = strings.TrimSpace(passphrase)
+		if len(ks.Accounts()) > 0 {
+			account = ks.Accounts()[0]
+		}
 
-		if len(ks.Accounts()) == 0 {
-			var err error
-			account, err = ks.NewAccount(passphrase)
+		if ks.Unlock(account, wallet.Password) != nil {
+			if len(wallet.Password) == 0 {
+				// Wallet doesn't exist and no password provided
+				if len(ks.Accounts()) == 0 {
+					fmt.Print("Enter new account password: ")
+				} else {
+					fmt.Print("Enter account password: ")
+				}
+
+				bytePassword, err := terminal.ReadPassword(syscall.Stdin)
+				if err != nil {
+					return nil, nil, err
+				}
+				passphrase := string(bytePassword)
+
+				wallet.Password = strings.TrimSpace(passphrase)
+			}
+
+			if len(ks.Accounts()) == 0 {
+				var err error
+				account, err = ks.NewAccount(wallet.Password)
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+			err := ks.Unlock(account, wallet.Password)
 			if err != nil {
 				return nil, nil, err
 			}
+
+			signer = func(data []byte) ([]byte, error) {
+				return ks.SignHash(account, data)
+			}
+
+			logger.Info().Hex("address", account.Address.Bytes()).Msg("created new wallet")
 		}
-		err = ks.Unlock(account, passphrase)
+
+		var err error
+		auth, err = bind.NewKeyStoreTransactorWithChainID(ks, account, chainId)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
-	auth, err := bind.NewKeyStoreTransactorWithChainID(ks, account, chainId)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	gasPriceAsFloat := 1e9 * gasPrice
+	gasPriceAsFloat := 1e9 * config.GasPrice
 	if gasPriceAsFloat < math.MaxInt64 {
 		auth.GasPrice = big.NewInt(int64(gasPriceAsFloat))
-	}
-
-	signer := func(data []byte) ([]byte, error) {
-		return ks.SignHash(account, data)
 	}
 
 	return auth, signer, nil

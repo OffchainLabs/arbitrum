@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt"
 	"github.com/knadh/koanf"
 	"github.com/knadh/koanf/parsers/json"
 	"github.com/knadh/koanf/providers/confmap"
@@ -22,6 +23,8 @@ import (
 	"github.com/knadh/koanf/providers/s3"
 	"github.com/mitchellh/mapstructure"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/ethutils"
+	"github.com/offchainlabs/arbitrum/packages/arb-util/fireblocks"
+	"github.com/offchainlabs/arbitrum/packages/arb-util/fireblocks/accounttype"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	flag "github.com/spf13/pflag"
@@ -55,6 +58,18 @@ type FeedOutput struct {
 type Feed struct {
 	Input  FeedInput  `koanf:"input"`
 	Output FeedOutput `koanf:"output"`
+}
+
+type Fireblocks struct {
+	APIKey        string `koanf:"api-key,omitempty"`
+	AssetId       string `koanf:"asset-id,omitempty"`
+	BaseURL       string `koanf:"base-url,omitempty"`
+	ListAccounts  bool   `koanf:"list-accounts,omitempty"`
+	PrivateKey    string `koanf:"private-key,omitempty"`
+	KeyPassword   string `koanf:"key-password,omitempty"`
+	SourceAddress string `koanf:"source-address,omitempty"`
+	SourceId      string `koanf:"source-id,omitempty"`
+	SourceType    string `koanf:"source-type,omitempty"`
 }
 
 type Healthcheck struct {
@@ -150,6 +165,7 @@ type Config struct {
 	BridgeUtilsAddress string      `koanf:"bridge-utils-address"`
 	Conf               Conf        `koanf:"conf"`
 	Feed               Feed        `koanf:"feed"`
+	Fireblocks         Fireblocks  `koanf:"fireblocks"`
 	GasPrice           float64     `koanf:"gas-price"`
 	GasPriceUrl        string      `koanf:"gas-price-url"`
 	Healthcheck        Healthcheck `koanf:"healthcheck"`
@@ -533,8 +549,70 @@ func endCommonParse(f *flag.FlagSet, k *koanf.Koanf) (*Config, *Wallet, error) {
 	}
 	err := k.UnmarshalWithConf("", &out, koanf.UnmarshalConf{DecoderConfig: &decoderConfig})
 	if err != nil {
-
 		return nil, nil, err
+	}
+
+	if len(out.Fireblocks.APIKey) != 0 || len(out.Fireblocks.BaseURL) != 0 || len(out.Fireblocks.PrivateKey) != 0 ||
+		len(out.Fireblocks.SourceAddress) != 0 || len(out.Fireblocks.SourceId) == 0 || len(out.Fireblocks.SourceType) != 0 {
+		if len(out.Fireblocks.APIKey) == 0 {
+			return nil, nil, errors.New("fireblocks configured but missing fireblocks.api-key")
+		}
+		if len(out.Fireblocks.BaseURL) == 0 {
+			return nil, nil, errors.New("fireblocks configured but missing fireblocks.base-url")
+		}
+		if len(out.Fireblocks.PrivateKey) == 0 {
+			return nil, nil, errors.New("fireblocks configured but missing fireblocks.private-key")
+		}
+		if len(out.Fireblocks.SourceAddress) == 0 {
+			return nil, nil, errors.New("fireblocks configured but missing fireblocks.source-address")
+		}
+		if len(out.Fireblocks.SourceId) == 0 {
+			return nil, nil, errors.New("fireblocks configured but missing fireblocks.source-id")
+		}
+		if len(out.Fireblocks.SourceType) == 0 {
+			return nil, nil, errors.New("fireblocks configured but missing fireblocks.source-type")
+		}
+
+		out.Fireblocks.PrivateKey = strings.Replace(out.Fireblocks.PrivateKey, "\\n", "\n", -1)
+
+		sourceType, err := accounttype.New(out.Fireblocks.SourceType)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid fireblocks.source-type: %s", out.Fireblocks.SourceType)
+		}
+
+		if out.Fireblocks.ListAccounts {
+			signKey, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(out.Fireblocks.PrivateKey))
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "unable to initialize private key to list fireblocks accounts")
+			}
+
+			fb := fireblocks.New(out.Fireblocks.AssetId, out.Fireblocks.BaseURL, *sourceType, out.Fireblocks.SourceId, out.Fireblocks.APIKey, signKey)
+
+			accounts, err := fb.ListVaultAccounts()
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "unable to send query to list fireblocks accounts")
+			}
+
+			fmt.Println("Fireblocks accounts:")
+			for _, account := range *accounts {
+				fmt.Printf("%s\t%s\n", account.Id, account.Name)
+				for _, asset := range account.Assets {
+					fmt.Printf("\t%s\t%s\t%s\n", asset.Id, asset.Balance, asset.Pending)
+				}
+			}
+
+			txs, err := fb.ListTransactions()
+			if err != nil {
+				return nil, nil, errors.Wrap(err, "unable to send query to list fireblocks transactions")
+			}
+
+			fmt.Println("Fireblocks transactions:")
+			for _, tx := range *txs {
+				fmt.Printf("%s,%s,%s,%s,%s,%s,%s\n", tx.Id, tx.Status, tx.SubStatus, tx.AssetId, tx.TxHash, tx.Destination.Type, tx.DestinationAddress)
+			}
+
+			os.Exit(0)
+		}
 	}
 
 	if out.Conf.Dump {

@@ -17,6 +17,7 @@ import (
 	"github.com/offchainlabs/arbitrum/packages/arb-node-core/ethbridgetestcontracts"
 	"github.com/offchainlabs/arbitrum/packages/arb-node-core/test"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/common"
+	"github.com/offchainlabs/arbitrum/packages/arb-util/configuration"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/core"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/ethutils"
 )
@@ -284,12 +285,12 @@ func initializeChallengeTest(
 	_, err = validatorCon2.Initialize(challenger)
 	test.FailIfError(t, err)
 
-	asserterAuth, err := ethbridge.NewTransactAuth(ctx, client, asserter, "")
+	asserterAuth, err := ethbridge.NewTransactAuth(ctx, client, asserter, &configuration.Config{})
 	test.FailIfError(t, err)
 	asserterWallet, err := ethbridge.NewValidator(asserterWalletAddress, ethcommon.Address{}, client, asserterAuth)
 	test.FailIfError(t, err)
 
-	challengerAuth, err := ethbridge.NewTransactAuth(ctx, client, challenger, "")
+	challengerAuth, err := ethbridge.NewTransactAuth(ctx, client, challenger, &configuration.Config{})
 	test.FailIfError(t, err)
 	challengerWallet, err := ethbridge.NewValidator(challengerWalletAddress, ethcommon.Address{}, client, challengerAuth)
 	test.FailIfError(t, err)

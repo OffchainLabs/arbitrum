@@ -38,6 +38,7 @@ import (
 	"github.com/offchainlabs/arbitrum/packages/arb-node-core/monitor"
 	"github.com/offchainlabs/arbitrum/packages/arb-rpc-node/snapshot"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/common"
+	"github.com/offchainlabs/arbitrum/packages/arb-util/configuration"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/core"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/ethutils"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/inbox"
@@ -104,7 +105,7 @@ func NewSequencerBatcher(
 	auth *bind.TransactOpts,
 	dataSigner func([]byte) ([]byte, error),
 	broadcaster *broadcaster.Broadcaster,
-	gasPriceUrl string,
+	config *configuration.Config,
 ) (*SequencerBatcher, error) {
 	chainTime, err := getChainTime(ctx, client)
 	if err != nil {
@@ -120,7 +121,7 @@ func NewSequencerBatcher(
 		return nil, errors.New("Transaction auth isn't for sequencer")
 	}
 
-	transactAuth, err := ethbridge.NewTransactAuth(ctx, client, auth, gasPriceUrl)
+	transactAuth, err := ethbridge.NewTransactAuth(ctx, client, auth, config)
 	if err != nil {
 		return nil, err
 	}

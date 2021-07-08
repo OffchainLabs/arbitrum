@@ -43,6 +43,7 @@ import (
 	"github.com/offchainlabs/arbitrum/packages/arb-node-core/monitor"
 	"github.com/offchainlabs/arbitrum/packages/arb-node-core/test"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/common"
+	"github.com/offchainlabs/arbitrum/packages/arb-util/configuration"
 	"github.com/offchainlabs/arbitrum/packages/arb-util/ethutils"
 )
 
@@ -191,7 +192,7 @@ func TestSequencerBatcher(t *testing.T) {
 	rollup, err := ethbridge.NewRollupWatcher(rollupAddr, 0, client)
 	test.FailIfError(t, err)
 
-	transactAuth, err := ethbridge.NewTransactAuth(ctx, client, auth, "")
+	transactAuth, err := ethbridge.NewTransactAuth(ctx, client, auth, &configuration.Config{})
 	test.FailIfError(t, err)
 
 	delayedInbox, err := ethbridge.NewStandardInbox(delayedInboxAddr, client, transactAuth)
@@ -229,7 +230,7 @@ func TestSequencerBatcher(t *testing.T) {
 		auth,
 		dummyDataSigner,
 		nil,
-		"",
+		&configuration.Config{},
 	)
 	test.FailIfError(t, err)
 	batcher.logBatchGasCosts = true

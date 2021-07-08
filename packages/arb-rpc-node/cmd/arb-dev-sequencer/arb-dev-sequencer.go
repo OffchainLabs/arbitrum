@@ -284,14 +284,18 @@ func startup() error {
 		DelayedMessagesTargetDelay: big.NewInt(*delayedMessagesTargetDelay),
 		CreateBatchBlockInterval:   big.NewInt(*createBatchBlockInterval),
 	}
-	settings := configuration.FeedOutput{
-		Addr:          "127.0.0.1",
-		IOTimeout:     2 * time.Second,
-		Port:          "9642",
-		Ping:          5 * time.Second,
-		ClientTimeout: 15 * time.Second,
-		Queue:         1,
-		Workers:       2,
+	config := configuration.Config{
+		Feed: configuration.Feed{
+			Output: configuration.FeedOutput{
+				Addr:          "127.0.0.1",
+				IOTimeout:     2 * time.Second,
+				Port:          "9642",
+				Ping:          5 * time.Second,
+				ClientTimeout: 15 * time.Second,
+				Queue:         1,
+				Workers:       2,
+			},
+		},
 	}
 
 	db, txDBErrChan, err := txdb.New(ctx, mon.Core, mon.Storage.GetNodeStore(), 100*time.Millisecond)
@@ -313,8 +317,7 @@ func startup() error {
 		time.Duration(5)*time.Second,
 		batcherMode,
 		signer,
-		settings,
-		"",
+		&config,
 	)
 	if err != nil {
 		return err

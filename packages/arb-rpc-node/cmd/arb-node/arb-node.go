@@ -209,6 +209,7 @@ func startup() error {
 			Str("url", config.L1.URL).
 			Str("rollup", config.Rollup.Address).
 			Str("bridgeUtils", config.BridgeUtilsAddress).
+			Int64("fromBlock", config.Rollup.FromBlock).
 			Msg("failed to start inbox reader, waiting and retrying")
 
 		select {
@@ -225,7 +226,7 @@ func startup() error {
 		batcherMode = rpc.ForwarderBatcherMode{NodeURL: config.Node.Forwarder.Target}
 	} else {
 		var auth *bind.TransactOpts
-		auth, dataSigner, err = cmdhelp.GetKeystore(config.Persistent.Chain, wallet, config.GasPrice, l1ChainId)
+		auth, dataSigner, err = cmdhelp.GetKeystore(config, wallet, l1ChainId)
 		if err != nil {
 			return errors.Wrap(err, "error running GetKeystore")
 		}
@@ -283,8 +284,7 @@ func startup() error {
 			time.Duration(config.Node.Aggregator.MaxBatchTime)*time.Second,
 			batcherMode,
 			dataSigner,
-			config.Feed.Output,
-			config.GasPriceUrl,
+			config,
 		)
 		lockoutConf := config.Node.Sequencer.Lockout
 		if err == nil && lockoutConf.Redis != "" {

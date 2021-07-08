@@ -38,6 +38,14 @@ type BuilderBackend struct {
 	realClient ethutils.EthClient
 }
 
+func (b *BuilderBackend) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+	panic("implement me")
+}
+
+func (b *BuilderBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+	panic("implement me")
+}
+
 func NewBuilderBackend(wallet *ValidatorWallet) (*BuilderBackend, error) {
 	randKey, err := crypto.GenerateKey()
 	if err != nil {
