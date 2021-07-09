@@ -3,7 +3,7 @@ module github.com/offchainlabs/arbitrum/packages/arb-rpc-node
 go 1.13
 
 require (
-	github.com/c-bata/go-prompt v0.2.2
+	github.com/c-bata/go-prompt v0.2.6
 	github.com/ethereum/go-ethereum v1.10.4
 	github.com/ethersphere/bee v0.6.2
 	github.com/go-redis/redis/v8 v8.10.0
