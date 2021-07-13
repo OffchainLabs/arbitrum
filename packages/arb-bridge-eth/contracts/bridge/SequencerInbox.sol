@@ -27,9 +27,6 @@ import "../rollup/Rollup.sol";
 import "./Messages.sol";
 
 contract SequencerInbox is ISequencerInbox, Cloneable {
-    uint8 internal constant L2_MSG = 3;
-    uint8 internal constant END_OF_BLOCK = 6;
-
     bytes32[] public override inboxAccs;
     uint256 public override messageCount;
 
@@ -70,14 +67,6 @@ contract SequencerInbox is ISequencerInbox, Cloneable {
         require(msg.sender == rollup, "ONLY_ROLLUP");
         maxDelaySeconds = newMaxDelaySeconds;
         emit MaxDelaySecondsUpdated(newMaxDelaySeconds);
-    }
-
-    function getLastDelayedAcc() internal view returns (bytes32) {
-        bytes32 acc = 0;
-        if (totalDelayedMessagesRead > 0) {
-            acc = delayedInbox.inboxAccs(totalDelayedMessagesRead - 1);
-        }
-        return acc;
     }
 
     function forceInclusion(

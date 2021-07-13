@@ -274,7 +274,7 @@ contract Rollup is RollupBase {
      * And dispatch pattern from EIP-2535: Diamonds
      */
 
-    function getFacets() public view returns (address, address) {
+    function getFacets() external view returns (address, address) {
         return (getAdminFacet(), getUserFacet());
     }
 
