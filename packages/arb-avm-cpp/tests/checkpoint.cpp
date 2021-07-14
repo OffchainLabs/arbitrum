@@ -322,9 +322,9 @@ TEST_CASE("Checkpoint Benchmark") {
 }
 
 void saveState(ReadWriteTransaction& transaction,
-               const Machine& machine,
+               Machine& machine,
                uint256_t expected_ref_count) {
-    auto results = saveMachine(transaction, machine);
+    auto results = saveTestMachine(transaction, machine);
     REQUIRE(results.status.ok());
     REQUIRE(results.reference_count == expected_ref_count);
     REQUIRE(transaction.commit().ok());
@@ -386,7 +386,8 @@ void deleteCheckpoint(ReadWriteTransaction& transaction,
 }
 
 Machine getComplexMachine() {
-    auto code = std::make_shared<Code>();
+    auto core_code = std::make_shared<CoreCode>();
+    auto code = std::make_shared<RunningCode>(core_code);
     auto stub = code->addSegment();
     stub = code->addOperation(stub.pc, Operation(OpCode::ADD));
     stub = code->addOperation(stub.pc, Operation(OpCode::MUL));
@@ -416,7 +417,8 @@ Machine getComplexMachine() {
 }
 
 Machine getDefaultMachine() {
-    auto code = std::make_shared<Code>();
+    auto core_code = std::make_shared<CoreCode>();
+    auto code = std::make_shared<RunningCode>(core_code);
     code->addSegment();
     auto static_val = Tuple();
     auto register_val = Tuple();
